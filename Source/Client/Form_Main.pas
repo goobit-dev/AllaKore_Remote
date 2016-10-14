@@ -86,6 +86,9 @@ type
     About_BitBtn: TBitBtn;
     TargetID_MaskEdit: TMaskEdit;
     Clipboard_Timer: TTimer;
+    laServerName: TLabel;
+    edServerName: TEdit;
+    bbServerConnect: TBitBtn;
     procedure Connect_BitBtnClick(Sender: TObject);
     procedure FormCreate(Sender: TObject);
     procedure Reconnect_TimerTimer(Sender: TObject);
@@ -105,8 +108,13 @@ type
     procedure About_BitBtnClick(Sender: TObject);
     procedure TargetID_MaskEditKeyPress(Sender: TObject; var Key: Char);
     procedure Clipboard_TimerTimer(Sender: TObject);
+    procedure edServerNameChange(Sender: TObject);
+    procedure bbServerConnectClick(Sender: TObject);
+    procedure FormDestroy(Sender: TObject);
   private
     { Private declarations }
+    FServerNameChanged: Boolean;
+    FServerNameChanging: Boolean;
   public
     MyID: string;
     MyPassword: string;
@@ -132,6 +140,8 @@ const
   Host = 'localhost';     // Host of Sockets  (Insert the IP Address or DNS of your Server)
   Port = 3898;            // Port of Sockets
   ConnectionTimeout = 60; // Timeout of connection (in secound)
+
+  RegistryName = 'AllaKore';
 
 implementation
 
@@ -587,6 +597,37 @@ begin
   ErrorCode := 0;
 end;
 
+procedure Tfrm_Main.edServerNameChange(Sender: TObject);
+var
+  _Host: string;
+begin
+  if FServerNameChanging then
+    Exit;
+
+  SetOffline;
+  Main_Socket.Active := False;
+  Desktop_Socket.Active := False;
+  Keyboard_Socket.Active := False;
+  Files_Socket.Active := False;
+
+  _Host := edServerName.Text;
+  if _Host = '' then
+    Exit;
+
+  // Define Host, Port and Timeout of Sockets
+  Main_Socket.Host := _Host;
+  Desktop_Socket.Host := _Host;
+  Keyboard_Socket.Host := _Host;
+  Files_Socket.Host := _Host;
+
+  FServerNameChanged := True;
+end;
+
+procedure Tfrm_Main.bbServerConnectClick(Sender: TObject);
+begin
+  Reconnect;
+end;
+
 procedure Tfrm_Main.Files_SocketConnect(Sender: TObject; Socket: TCustomWinSocket);
 var
   Thread_Connection_Files: TThread_Connection_Files;
@@ -615,22 +656,39 @@ procedure Tfrm_Main.FormCreate(Sender: TObject);
 var
   _Host: Ansistring;
   _Port: Integer;
+  reg: TRegistry;
 begin
   // Insert version on Caption of the Form
   Caption := Caption + ' - ' + GetAppVersionStr;
 
+  _Host := Host;
+  _Port := Port;
+
+  reg := TRegistry.Create;
+  try
+    if reg.OpenKeyReadOnly('\Software\' + RegistryName) then begin
+      if reg.ValueExists('Host') then
+        _Host := reg.ReadString('Host');
+      if reg.ValueExists('Port') then
+        _Port:= reg.ReadInteger('Port');
+    end;
+  finally;
+    reg.Free;
+  end;
 
   // Reads two exe params - host and port. If not supplied uses constants. to use: client.exe HOST PORT, for ex. AllaKore_Remote_Client.exe 192.168.16.201 3398
   if (ParamStr(1) <> '') then
-    _Host := ParamStr(1)
-  else
-    _Host := Host;
+    _Host := ParamStr(1);
 
   if (ParamStr(2) <> '') then
-    _Port := StrToIntDef(ParamStr(2), Port)
-  else
-    _Port := Port;
+    _Port := StrToIntDef(ParamStr(2), Port);
 
+  FServerNameChanging := True;
+  try
+    edServerName.Text := _Host;
+  finally
+    FServerNameChanging := False;
+  end;
 
   // Define Host, Port and Timeout of Sockets
   Main_Socket.Host := _Host;
@@ -650,6 +708,26 @@ begin
 
   SetOffline;
   Reconnect;
+end;
+
+procedure Tfrm_Main.FormDestroy(Sender: TObject);
+var
+  reg: TRegistry;
+begin
+  if FServerNameChanged then
+    try
+      reg := TRegistry.Create;
+      try
+        if reg.OpenKey('\Software\' + RegistryName, True) then begin
+          reg.WriteString('Host', Main_Socket.Host);
+          reg.WriteInteger('Port', Main_Socket.Port);
+        end;
+      finally;
+        reg.Free;
+      end;
+    except
+      // Ingnore errors while store parameters in regestry
+    end;
 end;
 
 procedure Tfrm_Main.Keyboard_SocketConnect(Sender: TObject; Socket: TCustomWinSocket);

@@ -16,6 +16,7 @@ object frm_Main: Tfrm_Main
   Position = poDesktopCenter
   OnClose = FormClose
   OnCreate = FormCreate
+  OnDestroy = FormDestroy
   PixelsPerInch = 96
   TextHeight = 13
   object TopBackground_Image: TImage
@@ -8499,7 +8500,6 @@ object frm_Main: Tfrm_Main
     Font.Name = 'Tahoma'
     Font.Style = [fsBold]
     ParentFont = False
-    StyleElements = [seClient, seBorder]
   end
   object Title2_Label: TLabel
     Left = 191
@@ -8513,7 +8513,6 @@ object frm_Main: Tfrm_Main
     Font.Name = 'Tahoma'
     Font.Style = [fsBold]
     ParentFont = False
-    StyleElements = [seClient, seBorder]
   end
   object background_label_Image3: TImage
     Left = 24
@@ -9180,7 +9179,6 @@ object frm_Main: Tfrm_Main
     Font.Name = 'Tahoma'
     Font.Style = [fsBold]
     ParentFont = False
-    StyleElements = [seClient, seBorder]
   end
   object Status_Image: TImage
     Left = 8
@@ -11487,6 +11485,13 @@ object frm_Main: Tfrm_Main
       C900D5D9D5CEBF970000000049454E44AE426082}
     Visible = False
   end
+  object laServerName: TLabel
+    Left = 71
+    Top = 354
+    Width = 66
+    Height = 13
+    Caption = 'Server Name:'
+  end
   object GroupBox1: TGroupBox
     Left = 8
     Top = 120
@@ -12159,7 +12164,6 @@ object frm_Main: Tfrm_Main
       Font.Name = 'Tahoma'
       Font.Style = [fsBold]
       ParentFont = False
-      StyleElements = [seClient, seBorder]
     end
     object background_label_Image2: TImage
       Left = 16
@@ -12826,7 +12830,6 @@ object frm_Main: Tfrm_Main
       Font.Name = 'Tahoma'
       Font.Style = [fsBold]
       ParentFont = False
-      StyleElements = [seClient, seBorder]
     end
     object YourID_Edit: TEdit
       Left = 135
@@ -12881,10 +12884,28 @@ object frm_Main: Tfrm_Main
     Text = '   -   -   '
     OnKeyPress = TargetID_MaskEditKeyPress
   end
+  object edServerName: TEdit
+    Left = 143
+    Top = 351
+    Width = 126
+    Height = 21
+    Alignment = taCenter
+    TabOrder = 4
+    OnChange = edServerNameChange
+  end
+  object bbServerConnect: TBitBtn
+    Left = 272
+    Top = 350
+    Width = 49
+    Height = 23
+    Caption = 'Connect'
+    TabOrder = 5
+    OnClick = bbServerConnectClick
+  end
   object Reconnect_Timer: TTimer
     Interval = 15000
     OnTimer = Reconnect_TimerTimer
-    Left = 56
+    Left = 64
     Top = 296
   end
   object Main_Socket: TClientSocket
@@ -12895,8 +12916,8 @@ object frm_Main: Tfrm_Main
     OnConnect = Main_SocketConnect
     OnDisconnect = Main_SocketDisconnect
     OnError = Main_SocketError
-    Left = 56
-    Top = 344
+    Left = 72
+    Top = 388
   end
   object Desktop_Socket: TClientSocket
     Active = False
@@ -12904,12 +12925,12 @@ object frm_Main: Tfrm_Main
     Port = 0
     OnConnect = Desktop_SocketConnect
     OnError = Desktop_SocketError
-    Left = 112
-    Top = 328
+    Left = 128
+    Top = 372
   end
   object ApplicationEvents1: TApplicationEvents
-    Left = 280
-    Top = 336
+    Left = 64
+    Top = 224
   end
   object Keyboard_Socket: TClientSocket
     Active = False
@@ -12917,8 +12938,8 @@ object frm_Main: Tfrm_Main
     Port = 0
     OnConnect = Keyboard_SocketConnect
     OnError = Keyboard_SocketError
-    Left = 168
-    Top = 344
+    Left = 184
+    Top = 388
   end
   object Files_Socket: TClientSocket
     Active = False
@@ -12926,8 +12947,8 @@ object frm_Main: Tfrm_Main
     Port = 0
     OnConnect = Files_SocketConnect
     OnError = Files_SocketError
-    Left = 224
-    Top = 328
+    Left = 240
+    Top = 372
   end
   object Timeout_Timer: TTimer
     Enabled = False
