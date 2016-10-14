@@ -20,29 +20,39 @@ interface
 uses
   Windows, Messages, SysUtils, Variants, Classes, Graphics, Controls, Forms,
   Dialogs, ComCtrls, StdCtrls, ExtCtrls, AppEvnts, IdBaseComponent, IdComponent,
-  IdTCPServer, IdMappedPortTCP, XPMan;
+  IdTCPServer, IdMappedPortTCP, IdContext, IdCustomTCPServer, IdGlobal;
 
+type
+  TCustomThreadConnection = class(TThread)
+  private
+    FContext: TIdContext;
+    FTarget: TIdContext;
+  protected
+    FID: string;
+    function ReadString: string;
+    function ReadBuffer: TIdBytes;
+    procedure Execute; override;
+  public
+    constructor Create(AContext: TIdContext; AID: string = '');
+    property Context: TIdContext read FContext;
+    property ID: string read FID;
+    property Target: TIdContext read FTarget write FTarget;
+  end;
 
 // Thread to Define type connection, if Main, Desktop Remote, Download or Upload Files.
 type
-  TThreadConnection_Define = class(TThread)
-  private
-    AThread_Define: TIdPeerThread;
-  public
-    constructor Create(AThread: TIdPeerThread); overload;
+  TThreadConnection_Define = class(TCustomThreadConnection)
+  protected
     procedure Execute; override;
   end;
 
 // Thread to Define type connection are Main.
 type
-  TThreadConnection_Main = class(TThread)
+  TThreadConnection_Main = class(TCustomThreadConnection)
   private
-    AThread_Main: TIdPeerThread;
-    AThread_Main_Target: TIdPeerThread;
-    ID, Password, TargetID, TargetPassword: string;
-    StartPing, EndPing: Integer;
-  public
-    constructor Create(AThread: TIdPeerThread); overload;
+    Password, TargetID, TargetPassword: string;
+    StartPing, EndPing: Cardinal;
+  protected
     procedure Execute; override;
     procedure AddItems;
     procedure InsertTargetID;
@@ -51,37 +61,22 @@ type
 
 // Thread to Define type connection are Desktop.
 type
-  TThreadConnection_Desktop = class(TThread)
-  private
-    AThread_Desktop: TIdPeerThread;
-    AThread_Desktop_Target: TIdPeerThread;
-    MyID: string;
-  public
-    constructor Create(AThread: TIdPeerThread; ID: string); overload;
+  TThreadConnection_Desktop = class(TCustomThreadConnection)
+  protected
     procedure Execute; override;
   end;
 
 // Thread to Define type connection are Keyboard.
 type
-  TThreadConnection_Keyboard = class(TThread)
-  private
-    AThread_Keyboard: TIdPeerThread;
-    AThread_Keyboard_Target: TIdPeerThread;
-    MyID: string;
-  public
-    constructor Create(AThread: TIdPeerThread; ID: string); overload;
+  TThreadConnection_Keyboard = class(TCustomThreadConnection)
+  protected
     procedure Execute; override;
   end;
 
 // Thread to Define type connection are Files.
 type
-  TThreadConnection_Files = class(TThread)
-  private
-    AThread_Files: TIdPeerThread;
-    AThread_Files_Target: TIdPeerThread;
-    MyID: string;
-  public
-    constructor Create(AThread: TIdPeerThread; ID: string); overload;
+  TThreadConnection_Files = class(TCustomThreadConnection)
+  protected
     procedure Execute; override;
   end;
 
@@ -95,8 +90,8 @@ type
     Ping_Timer: TTimer;
     procedure ApplicationEvents1Exception(Sender: TObject; E: Exception);
     procedure FormCreate(Sender: TObject);
-    procedure Main_IdTCPServerExecute(AThread: TIdPeerThread);
-    procedure Main_IdTCPServerConnect(AThread: TIdPeerThread);
+    procedure Main_IdTCPServerExecute(AContext: TIdContext);
+    procedure Main_IdTCPServerConnect(AContext: TIdContext);
     procedure Ping_TimerTimer(Sender: TObject);
   private
     { Private declarations }
@@ -113,46 +108,6 @@ const
 implementation
 
 {$R *.dfm}
-
-constructor TThreadConnection_Define.Create(AThread: TIdPeerThread);
-begin
-  inherited Create(true);
-  AThread_Define := AThread;
-  FreeOnTerminate := True;
-end;
-
-constructor TThreadConnection_Main.Create(AThread: TIdPeerThread);
-begin
-  inherited Create(true);
-  AThread_Main := AThread;
-  FreeOnTerminate := True;
-end;
-
-constructor TThreadConnection_Desktop.Create(AThread: TIdPeerThread; ID: string);
-begin
-  inherited Create(true);
-  AThread_Desktop := AThread;
-  MyID := ID;
-  FreeOnTerminate := True;
-end;
-
-constructor TThreadConnection_Keyboard.Create(AThread: TIdPeerThread; ID: string);
-begin
-  inherited Create(true);
-  AThread_Keyboard := AThread;
-  MyID := ID;
-  FreeOnTerminate := True;
-end;
-
-constructor TThreadConnection_Files.Create(AThread: TIdPeerThread; ID: string);
-begin
-  inherited Create(true);
-  AThread_Files := AThread;
-  MyID := ID;
-  FreeOnTerminate := True;
-end;
-
-
 
 // Get current Version
 function GetAppVersionStr: string;
@@ -279,6 +234,54 @@ begin
 
 end;
 
+{ TCustomThreadConnection }
+
+constructor TCustomThreadConnection.Create(AContext: TIdContext; AID: string = '');
+begin
+  inherited Create(True);
+  FContext := AContext;
+  FID := AID;
+  FreeOnTerminate := True;
+end;
+
+procedure TCustomThreadConnection.Execute;
+begin
+  {$IFDEF DEBUG}
+  NameThreadForDebugging(AnsiString(Format('%s:%.8x', [ClassName, Integer(Self)])));
+  {$ENDIF}
+end;
+
+function TCustomThreadConnection.ReadString: string;
+var
+  Bytes: TIdBytes;
+  i: Integer;
+begin
+  Bytes := ReadBuffer;
+  SetLength(Result, Length(Bytes));
+  for i := 1 to Length(Result) do
+    Word(Result[i]) := Bytes[i - 1];
+end;
+
+function TCustomThreadConnection.ReadBuffer: TIdBytes;
+begin
+  Result := Nil;
+  try
+    with Context.Connection.IOHandler do
+      //Result := ReadLn;
+      while not Terminated and Connected do begin
+        while not Terminated and Connected and InputBufferIsEmpty do
+          CheckForDataOnSource(IdTimeoutInfinite);
+        if not InputBufferIsEmpty then begin
+          InputBuffer.ExtractToBytes(Result, -1, False);
+          Break;
+        end;
+      end;
+  except
+  end;
+end;
+
+{ Tfrm_Main }
+
 procedure Tfrm_Main.ApplicationEvents1Exception(Sender: TObject; E: Exception);
 begin
   Logs_Memo.Lines.Add(' ');
@@ -294,7 +297,7 @@ begin
   Caption := Caption + ' - ' + GetAppVersionStr;
 end;
 
-procedure Tfrm_Main.Main_IdTCPServerExecute(AThread: TIdPeerThread);
+procedure Tfrm_Main.Main_IdTCPServerExecute(AContext: TIdContext);
 begin
   Sleep(5); // Avoids using 100% CPU
 end;
@@ -312,17 +315,17 @@ begin
   inherited;
 
   try
-    while AThread_Define.Connection.Connected do
+    while Context.Connection.Connected do
     begin
-      s := AThread_Define.Connection.CurrentReadBuffer;
+      s := ReadString;
 
       if (Length(s) < 1) then
         Break; // Break the while
       if (Pos('<|MAINSOCKET|>', s) > 0) then
       begin
       // Create the Thread for Main Socket
-        ThreadMain := TThreadConnection_Main.Create(AThread_Define);
-        ThreadMain.Resume;
+        ThreadMain := TThreadConnection_Main.Create(Context);
+        ThreadMain.Start;
 
         break; // Break the while
       end;
@@ -335,8 +338,8 @@ begin
         ID := Copy(s2, 1, Pos('<<|', s2) - 1);
 
       // Create the Thread for Desktop Socket
-        ThreadDesktop := TThreadConnection_Desktop.Create(AThread_Define, ID);
-        ThreadDesktop.Resume;
+        ThreadDesktop := TThreadConnection_Desktop.Create(Context, ID);
+        ThreadDesktop.Start;
 
         break; // Break the while
       end;
@@ -349,8 +352,8 @@ begin
         ID := Copy(s2, 1, Pos('<<|', s2) - 1);
 
       // Create the Thread for Keyboard Socket
-        ThreadKeyboard := TThreadConnection_Keyboard.Create(AThread_Define, ID);
-        ThreadKeyboard.Resume;
+        ThreadKeyboard := TThreadConnection_Keyboard.Create(Context, ID);
+        ThreadKeyboard.Start;
 
         break; // Break the while
       end;
@@ -363,8 +366,8 @@ begin
         ID := Copy(s2, 1, Pos('<<|', s2) - 1);
 
       // Create the Thread for Keyboard Socket
-        ThreadFiles := TThreadConnection_Files.Create(AThread_Define, ID);
-        ThreadFiles.Resume;
+        ThreadFiles := TThreadConnection_Files.Create(Context, ID);
+        ThreadFiles.Start;
 
         break; // Break the while
       end;
@@ -380,12 +383,11 @@ procedure TThreadConnection_Main.AddItems;
 var
   L: TListItem;
 begin
-
-  ID := GenerateID;
+  FID := GenerateID;
   Password := GeneratePassword;
   L := frm_Main.Connections_ListView.Items.Add;
-  L.Caption := IntToStr(AThread_Main.Handle);
-  L.SubItems.Add(AThread_Main.Connection.Socket.Binding.PeerIP);
+  L.Caption := IntToStr(Context.Binding.Handle);
+  L.SubItems.Add(Context.Binding.PeerIP);
   L.SubItems.Add(ID);
   L.SubItems.Add(Password);
   L.SubItems.Add('');
@@ -403,20 +405,20 @@ begin
 
   Synchronize(AddItems);
 
-  L := frm_Main.Connections_ListView.FindCaption(0, IntToStr(AThread_Main.Handle), false, true, false);
+  L := frm_Main.Connections_ListView.FindCaption(0, IntToStr(Context.Binding.Handle), false, true, false);
   L.SubItems.Objects[0] := TObject(Self);
 
-  AThread_Main.Connection.Write('<|ID|>' + ID + '<|>' + Password + '<<|');
+  Context.Connection.IOHandler.Write('<|ID|>' + ID + '<|>' + Password + '<<|');
   try
-    while AThread_Main.Connection.Connected do
+    while Context.Connection.Connected do
     begin
 
-      s := AThread_Main.Connection.CurrentReadBuffer;
+      s := ReadString;
 
       if (Length(s) < 1) then
       begin
-        if (AThread_Main_Target <> nil) then
-          AThread_Main_Target.Connection.Write('<|DISCONNECTED|>');
+        if Target <> nil then
+          Target.Connection.IOHandler.Write('<|DISCONNECTED|>');
         Break;
       end;
 
@@ -429,11 +431,11 @@ begin
 
         if (CheckIDExists(TargetID)) then
           if (FindListItemID(TargetID).SubItems[3] = '') then
-            AThread_Main.Connection.Write('<|IDEXISTS!REQUESTPASSWORD|>')
+            Context.Connection.IOHandler.Write('<|IDEXISTS!REQUESTPASSWORD|>')
           else
-            AThread_Main.Connection.Write('<|ACCESSBUSY|>')
+            Context.Connection.IOHandler.Write('<|ACCESSBUSY|>')
         else
-          AThread_Main.Connection.Write('<|IDNOTEXISTS|>');
+          Context.Connection.IOHandler.Write('<|IDNOTEXISTS|>');
       end;
 
       if (Pos('<|PONG|>', s) > 0) then
@@ -454,10 +456,10 @@ begin
 
         if (CheckIDPassword(TargetID, TargetPassword)) then
         begin
-          AThread_Main.Connection.Write('<|ACCESSGRANTED|>');
+          Context.Connection.IOHandler.Write('<|ACCESSGRANTED|>');
         end
         else
-          AThread_Main.Connection.Write('<|ACCESSDENIED|>');
+          Context.Connection.IOHandler.Write('<|ACCESSDENIED|>');
       end;
 
       if (Pos('<|RELATION|>', s) > 0) then
@@ -465,7 +467,7 @@ begin
         s2 := s;
         Delete(s2, 1, Pos('<|RELATION|>', s2) + 11);
 
-        ID := Copy(s2, 1, Pos('<|>', s2) - 1);
+        FID := Copy(s2, 1, Pos('<|>', s2) - 1);
         Delete(s2, 1, Pos('<|>', s2) + 2);
 
         TargetID := Copy(s2, 1, Pos('<<|', s2) - 1);
@@ -476,25 +478,25 @@ begin
         Synchronize(InsertTargetID);
 
       // Relates the main Sockets
-        (L.SubItems.Objects[0] as TThreadConnection_Main).AThread_Main_Target := (L2.SubItems.Objects[0] as TThreadConnection_Main).AThread_Main;
-        (L2.SubItems.Objects[0] as TThreadConnection_Main).AThread_Main_Target := (L.SubItems.Objects[0] as TThreadConnection_Main).AThread_Main;
+        (L.SubItems.Objects[0] as TThreadConnection_Main).Target := (L2.SubItems.Objects[0] as TThreadConnection_Main).Context;
+        (L2.SubItems.Objects[0] as TThreadConnection_Main).Target := (L.SubItems.Objects[0] as TThreadConnection_Main).Context;
 
       // Relates the Remote Desktop
-        (L.SubItems.Objects[1] as TThreadConnection_Desktop).AThread_Desktop_Target := (L2.SubItems.Objects[1] as TThreadConnection_Desktop).AThread_Desktop;
-        (L2.SubItems.Objects[1] as TThreadConnection_Desktop).AThread_Desktop_Target := (L.SubItems.Objects[1] as TThreadConnection_Desktop).AThread_Desktop;
+        (L.SubItems.Objects[1] as TThreadConnection_Desktop).Target := (L2.SubItems.Objects[1] as TThreadConnection_Desktop).Context;
+        (L2.SubItems.Objects[1] as TThreadConnection_Desktop).Target := (L.SubItems.Objects[1] as TThreadConnection_Desktop).Context;
 
       // Relates the Keyboard Socket
-        (L.SubItems.Objects[2] as TThreadConnection_Keyboard).AThread_Keyboard_Target := (L2.SubItems.Objects[2] as TThreadConnection_Keyboard).AThread_Keyboard;
+        (L.SubItems.Objects[2] as TThreadConnection_Keyboard).Target := (L2.SubItems.Objects[2] as TThreadConnection_Keyboard).Context;
 
       // Relates the Share Files
-        (L.SubItems.Objects[3] as TThreadConnection_Files).AThread_Files_Target := (L2.SubItems.Objects[3] as TThreadConnection_Files).AThread_Files;
-        (L2.SubItems.Objects[3] as TThreadConnection_Files).AThread_Files_Target := (L.SubItems.Objects[3] as TThreadConnection_Files).AThread_Files;
+        (L.SubItems.Objects[3] as TThreadConnection_Files).Target := (L2.SubItems.Objects[3] as TThreadConnection_Files).Context;
+        (L2.SubItems.Objects[3] as TThreadConnection_Files).Target := (L.SubItems.Objects[3] as TThreadConnection_Files).Context;
 
       // Get first screenshot
-        (L.SubItems.Objects[1] as TThreadConnection_Desktop).AThread_Desktop_Target.Connection.Write('<|GETFULLSCREENSHOT|>');         //<|NEWRESOLUTION|>996<|>528<<|
+        (L.SubItems.Objects[1] as TThreadConnection_Desktop).Target.Connection.IOHandler.Write('<|GETFULLSCREENSHOT|>');         //<|NEWRESOLUTION|>996<|>528<<|
 
       // Warns Access
-        (L.SubItems.Objects[0] as TThreadConnection_Main).AThread_Main_Target.Connection.Write('<|ACCESSING|>');
+        (L.SubItems.Objects[0] as TThreadConnection_Main).Target.Connection.IOHandler.Write('<|ACCESSING|>');
       end;
 
 
@@ -508,27 +510,27 @@ begin
 
         if (Pos('<|FOLDERLIST|>', s2) > 0) then
         begin
-          while (AThread_Main.Connection.Connected) do
+          while Context.Connection.Connected do
           begin
             if (Pos('<<|FOLDERLIST', s2) > 0) then
               Break;
-            s2 := s2 + AThread_Main.Connection.CurrentReadBuffer;
+            s2 := s2 + ReadString;
             Sleep(5); // Avoids using 100% CPU
           end;
         end;
 
         if (Pos('<|FILESLIST|>', s2) > 0) then
         begin
-          while (AThread_Main.Connection.Connected) do
+          while Context.Connection.Connected do
           begin
             if (Pos('<<|FILESLIST', s2) > 0) then
               Break;
-            s2 := s2 + AThread_Main.Connection.CurrentReadBuffer;
+            s2 := s2 + ReadString;
             Sleep(5); // Avoids using 100% CPU
           end;
         end;
 
-        AThread_Main_Target.Connection.Write(s2);
+        Target.Connection.IOHandler.Write(s2);
       end;
     end;
   except
@@ -541,7 +543,7 @@ var
   L: TListItem;
 begin
 
-  L := frm_Main.Connections_ListView.FindCaption(0, IntToStr(AThread_Main.Handle), false, true, false);
+  L := frm_Main.Connections_ListView.FindCaption(0, IntToStr(Context.Binding.Handle), false, true, false);
   if (L <> nil) then
     L.SubItems[4] := intToStr(EndPing) + ' ms';
 
@@ -551,7 +553,7 @@ procedure TThreadConnection_Main.InsertTargetID;
 var
   L, L2: TListItem;
 begin
-  L := frm_Main.Connections_ListView.FindCaption(0, IntToStr(AThread_Main.Handle), false, true, false);
+  L := frm_Main.Connections_ListView.FindCaption(0, IntToStr(Context.Binding.Handle), false, true, false);
   if (L <> nil) then
   begin
     L2 := FindListItemID(TargetID);
@@ -565,23 +567,23 @@ end;
 // The connection type is the Desktop Screens
 procedure TThreadConnection_Desktop.Execute;
 var
-  s: string;
+  Bytes: TIdBytes;
   L: TListItem;
 begin
   inherited;
 
-  L := FindListItemID(MyID);
+  L := FindListItemID(ID);
   L.SubItems.Objects[1] := TObject(Self);
 
   try
-    while AThread_Desktop.Connection.Connected do
+    while Context.Connection.Connected do
     begin
-      s := AThread_Desktop.Connection.CurrentReadBuffer;
+      Bytes := ReadBuffer;
 
-      if (Length(s) < 1) then
+      if (Length(Bytes) = 0) then
         break;
 
-      AThread_Desktop_Target.Connection.Write(s);
+      Target.Connection.IOHandler.Write(Bytes);
     end;
   except
   end;
@@ -590,23 +592,23 @@ end;
 // The connection type is the Keyboard Remote
 procedure TThreadConnection_Keyboard.Execute;
 var
-  s: string;
+  Bytes: TIdBytes;
   L: TListItem;
 begin
   inherited;
 
-  L := FindListItemID(MyID);
+  L := FindListItemID(ID);
   L.SubItems.Objects[2] := TObject(Self);
 
   try
-    while AThread_Keyboard.Connection.Connected do
+    while Context.Connection.Connected do
     begin
-      s := AThread_Keyboard.Connection.CurrentReadBuffer;
+      Bytes := ReadBuffer;
 
-      if (Length(s) < 1) then
+      if (Length(Bytes) = 0) then
         break;
 
-      AThread_Keyboard_Target.Connection.Write(s);
+      Target.Connection.IOHandler.Write(Bytes);
     end;
   except
   end;
@@ -616,49 +618,47 @@ end;
 // The connection type is to Share Files
 procedure TThreadConnection_Files.Execute;
 var
-  s: string;
+  Bytes: TIdBytes;
   L: TListItem;
 begin
   inherited;
 
-  L := FindListItemID(MyID);
+  L := FindListItemID(ID);
   L.SubItems.Objects[3] := TObject(Self);
 
   try
-    while AThread_Files.Connection.Connected do
+    while Context.Connection.Connected do
     begin
-      s := AThread_Files.Connection.CurrentReadBuffer;
+      Bytes := ReadBuffer;
 
-      if (Length(s) < 1) then
+      if (Length(Bytes) = 0) then
         break;
 
-      AThread_Files_Target.Connection.Write(s);
+      Target.Connection.IOHandler.Write(Bytes);
     end;
   except
   end;
 end;
 
-procedure Tfrm_Main.Main_IdTCPServerConnect(AThread: TIdPeerThread);
+procedure Tfrm_Main.Main_IdTCPServerConnect(AContext: TIdContext);
 var
   Connection: TThreadConnection_Define;
 begin
   // Create Defines Thread of Connections
-  Connection := TThreadConnection_Define.Create(AThread);
-  Connection.Resume;
+  Connection := TThreadConnection_Define.Create(AContext);
+  Connection.Start;
 end;
 
 procedure Tfrm_Main.Ping_TimerTimer(Sender: TObject);
 var
   i: Integer;
 begin
-  i := 0;
-
-  while i < Connections_ListView.Items.Count do
+  for i := Connections_ListView.Items.Count - 1 downto 0 do
   begin
     try
 
       // Request Ping
-      (Connections_ListView.Items.Item[i].SubItems.Objects[0] as TThreadConnection_Main).AThread_Main.Connection.Write('<|PING|>');
+      (Connections_ListView.Items.Item[i].SubItems.Objects[0] as TThreadConnection_Main).Context.Connection.IOHandler.Write('<|PING|>');
       (Connections_ListView.Items.Item[i].SubItems.Objects[0] as TThreadConnection_Main).StartPing := GetTickCount;
 
 
@@ -668,15 +668,15 @@ begin
         if not (CheckIDExists(Connections_ListView.Items.Item[i].SubItems[3])) then
         begin
           Connections_ListView.Items.Item[i].Delete;
-          Dec(i);
         end;
-
       end;
 
-      Inc(i);
     except
       // Any error, delete
-      Connections_ListView.Items.Item[i].Delete;
+      try
+        Connections_ListView.Items.Item[i].Delete;
+      except
+      end;
     end;
   end;
 end;

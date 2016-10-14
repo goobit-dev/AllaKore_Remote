@@ -33,7 +33,7 @@ object frm_Chat: Tfrm_Chat
     Width = 214
     Height = 280
     Align = alClient
-    Font.Charset = ANSI_CHARSET
+    Font.Charset = DEFAULT_CHARSET
     Font.Color = clWindowText
     Font.Height = -11
     Font.Name = 'Tahoma'
@@ -42,6 +42,5 @@ object frm_Chat: Tfrm_Chat
     ReadOnly = True
     ScrollBars = ssVertical
     TabOrder = 1
-    Zoom = 100
   end
 end

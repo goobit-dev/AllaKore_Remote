@@ -1,6 +1,11 @@
 program AllaKore_Remote_Server;
 
 uses
+  madExcept,
+  madLinkDisAsm,
+  madListHardware,
+  madListProcesses,
+  madListModules,
   Forms,
   Form_Main in 'Form_Main.pas' {frm_Main};
 

@@ -4798,7 +4798,6 @@ object frm_Password: Tfrm_Password
     Font.Name = 'Tahoma'
     Font.Style = [fsBold]
     ParentFont = False
-    StyleElements = [seClient, seBorder]
   end
   object Ok_BitBtn: TBitBtn
     Left = 190
